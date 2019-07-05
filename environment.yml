@@ -1,0 +1,30 @@
+name: AdhUI
+
+channels:
+    - pyviz
+    - pyviz/label/dev
+    - erdc
+    - erdc/label/dev
+    - aquaveo
+    - conda-forge
+
+dependencies:
+    - python=3.6
+    - panel
+    - pyuit
+    - holoviews
+    - geoviews
+    - xarray
+    - param
+    - numpy
+    - genesis
+    - pandas
+    - geopandas
+    - cartopy
+    - xmsinterp
+    - xmsmesh
+    - datashader
+    # for testing
+    - pytest
+    - pyflakes
+    - nbsmoke

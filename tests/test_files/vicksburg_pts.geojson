@@ -1,0 +1,6 @@
+{
+"type": "FeatureCollection",
+"features": [
+{ "type": "Feature", "properties": { "node_spacing": 400, "label": "point1" }, "geometry": { "type": "Point", "coordinates": [ -10100750.0, 3807009.333 ] } }
+]
+}

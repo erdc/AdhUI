@@ -1,0 +1,7 @@
+{
+"type": "FeatureCollection",
+"features": [
+{ "type": "Feature", "properties": { "node_spacing": 1000, "label": "poly1" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -10114986.0, 3806790.0 ], [ -10123906.0, 3812413.0 ], [ -10130333.0, 3807530.0 ], [ -10121522.0, 3805407.0 ], [ -10129889.0, 3798394.0 ], [ -10122959.0, 3796693.0 ], [ -10114986.0, 3806790.0 ] ] ] } },
+{ "type": "Feature", "properties": { "node_spacing": 1000, "label": "poly2" }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -10095762.0, 3804189.0 ], [ -10101582.0, 3817180.0 ], [ -10104906.0, 3799659.0 ], [ -10095762.0, 3804189.0 ] ] ] } }
+]
+}
