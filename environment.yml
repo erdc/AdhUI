@@ -1,4 +1,4 @@
-name: AdhUI
+name: adhui
 
 channels:
     - pyviz
@@ -24,6 +24,7 @@ dependencies:
     - xmsinterp
     - xmsmesh
     - datashader
+    - adhmodel
     # for testing
     - pytest
     - pyflakes

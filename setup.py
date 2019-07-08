@@ -22,6 +22,7 @@ setup(
         'pytest',
         'pyflakes',
         'nbsmoke',
+        'adhmodel'
     ],
     description="UI Building blocks for Adaptive Hydraulics Model creation and visualization",
     url="https://github.com/erdc/AdhUI",
