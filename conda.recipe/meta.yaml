@@ -29,15 +29,6 @@ requirements:
     - {{ dep.lower() }}
     {% endfor %}
 
-test:
-  requires:
-    # dependencies are defined in setup.py
-    {% for dep in data['extras_require'] %}
-    - {{ dep.lower() }}
-    {% endfor %}
-  imports:
-    - adhui
-
 about:
   home: {{ data['url'] }}
   summary: {{ data['description'] }}
