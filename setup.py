@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='AdhUI',
+    name='adhui',
     version='0.0.1',
     packages=find_packages(),
     include_package_data=True,
@@ -24,5 +24,5 @@ setup(
         'nbsmoke',
     ],
     description="UI Building blocks for Adaptive Hydraulics Model creation and visualization",
-    url="https://github.com/kcpevey/AdhUI",
+    url="https://github.com/erdc/AdhUI",
     )
