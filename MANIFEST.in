@@ -1,0 +1,2 @@
+recursive-include tests/test_files *
+recursive-include docs *

@@ -153,7 +153,7 @@ class ConceptualModelEditor(param.Parameterized):
         self.adh_mod = AdhModel(path_type=gv.Polygons, polys=polys,
                                 point_columns=['node_spacing'], poly_columns=['node_spacing'],
                                 crs=polys.crs)
-
+        self.adh_mod.projection.set_crs(polys.crs)
         self.adh_mod.wmts.source = gv.tile_sources.EsriImagery
 
         self.adh_mod.height = 600
@@ -181,7 +181,7 @@ class CreateMesh(param.Parameterized):
     # import data
     point_file = param.String(default=os.path.join(ROOTDIR, 'tests', 'test_files', 'vicksburg_pts.geojson'), label='Point file (*.geojson)', precedence=3)
     poly_file = param.String(default=os.path.join(ROOTDIR, 'tests', 'test_files', 'vicksburg_polys.geojson'), label='Polygon file (*geojson)', precedence=4)
-    projection = param.ClassSelector(default=Projection(), class_=Projection, precedence=5)
+    import_projection = param.ClassSelector(default=Projection(), class_=Projection, precedence=5)
     load_data = param.Action(lambda self: self.param.trigger('load_data'), label='Load', precedence=6)
 
     map_height = param.Number(default=600, bounds=(0, None), precedence=-1)
@@ -191,7 +191,8 @@ class CreateMesh(param.Parameterized):
     default_poly_spacing = param.Number(default=1000, bounds=(0, None), precedence=-1)
 
     adh_mod = param.ClassSelector(default=AdhModel(path_type=gv.Polygons, poly_columns=['node_spacing'],
-                                                 point_columns=['node_spacing']), class_=AdhModel)
+                                                   point_columns=['node_spacing'], crs=ccrs.GOOGLE_MERCATOR),
+                                  class_=AdhModel)
 
     def __init__(self, **params):
         super(CreateMesh, self).__init__(**params)
@@ -199,18 +200,19 @@ class CreateMesh(param.Parameterized):
         # self.map.opts.get('style') # merged but not released. (https://github.com/pyviz/holoviews/pull/3440)
         self.mesh_io = None
         self.adh_mod.wmts.source = gv.tile_sources.EsriImagery
-        self.projection.set_crs(ccrs.GOOGLE_MERCATOR)
+        self.import_projection.set_crs(ccrs.GOOGLE_MERCATOR)
 
     @param.depends('load_data', watch=True)
     def _load_data(self):
         polys = geopandas.read_file(self.poly_file)
         pts = geopandas.read_file(self.point_file)
 
-        self.adh_mod.points = geodframe_to_geoviews(pts, 'point', crs=self.projection.get_crs())
-        self.adh_mod.polys = geodframe_to_geoviews(polys, 'polygon', crs=self.projection.get_crs())
+        self.adh_mod.points = geodframe_to_geoviews(pts, 'point', crs=self.import_projection.get_crs())
+        self.adh_mod.polys = geodframe_to_geoviews(polys, 'polygon', crs=self.import_projection.get_crs())
 
     @param.depends('create', watch=True)
     def _create(self):
+        # print('create clicked')
         # todo modify to always reproject to mercator before creating the mesh
         self.status_bar.busy()
 
@@ -246,7 +248,9 @@ class CreateMesh(param.Parameterized):
                 # instantiate the redistribution class
                 rdp = xmsmesh.meshing.PolyRedistributePts()
                 # set the node distance
-                node_spacing = self.adh_mod.poly_stream.element.dimension_values('node_spacing', expanded=False)[idx]
+
+                node_spacing = float(self.adh_mod.poly_stream.element.dimension_values('node_spacing', expanded=False)[idx])
+                # print(node_spacing, type(node_spacing))
                 # rdp.set_constant_size_func(float(self.adh_mod.poly_stream.data['node_spacing'][idx]))  # create_constant_size_function
                 rdp.set_constant_size_func(node_spacing)
                 # run the redistribution function
@@ -269,10 +273,13 @@ class CreateMesh(param.Parameterized):
         else:
             self.status_bar.set_msg('Meshing errors found: {}'.format(errors))
 
-        self.adh_mod.mesh = AdhMesh(crs=self.adh_mod.poly_stream.element.crs)
+        # poly_stream and point_stream are always mercator because they come from bokeh
+        proj = Projection(crs_label='Mercator')
+        self.adh_mod.mesh = AdhMesh(projection=proj)
         self.adh_mod.mesh.verts, self.adh_mod.mesh.tris = xmsmesh_to_dataframe(self.mesh_io.points, self.mesh_io.cells)
         self.adh_mod.mesh.reproject_points()
-        self.adh_mod.mesh.tri_mesh = gv.TriMesh((self.adh_mod.mesh.tris[['v0', 'v1', 'v2']], self.adh_mod.mesh.mesh_points))
+        self.adh_mod.mesh.tri_mesh = gv.TriMesh((self.adh_mod.mesh.tris[['v0', 'v1', 'v2']],
+                                                 self.adh_mod.mesh.mesh_points)).opts(opts.TriMesh(edge_cmap='yellow', edge_color='yellow'))
 
     # @param.depends('adh_mod.mesh', 'adh_mod.viewable_points', 'adh_mod.viewable_polys', 'load_data', 'adh_mod.wmts.source', watch=True)
     @param.depends('create', 'load_data', watch=True)
@@ -309,7 +316,7 @@ class CreateMesh(param.Parameterized):
         # data_tab = pn.Tabs(('Polygons', self.adh_mod.poly_table), ('Points', self.adh_mod.point_table), name='View Data')
 
         import_tab = pn.Column(pn.panel(self.param, parameters=['point_file', 'poly_file'], show_name=False),
-                               pn.panel(self.projection, show_name=False),
+                               pn.panel(self.import_projection, show_name=False),
                                pn.panel(self.param, parameters=['load_data'], show_name=False))
 
         logo_box = pn.Spacer()

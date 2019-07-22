@@ -59,6 +59,6 @@ class TestMesh(unittest.TestCase):
 
         mesh_panel.point_file = os.path.join(ROOTDIR, 'tests', 'test_files', 'vicksburg_pts.geojson')
         mesh_panel.poly_file = os.path.join(ROOTDIR, 'tests', 'test_files', 'vicksburg_polys.geojson')
-        mesh_panel.projection.set_crs(ccrs.GOOGLE_MERCATOR)
+        mesh_panel.import_projection.set_crs(ccrs.GOOGLE_MERCATOR)
 
         mesh_panel._load_data()
