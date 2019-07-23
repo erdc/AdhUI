@@ -339,15 +339,16 @@ class AdhView(param.Parameterized):
         super(AdhView, self).__init__(**params)
         self.meshes = None
 
-        # set default values
-        self.param.selected_result.objects = self.adh_mod.simulation.results.data_vars
-        try:
-            self.selected_result = 'Depth'
-        except:
-            self.selected_result = set(self.adh_mod.simulation.results.data_vars).pop()
+        if len(self.adh_mod.simulation.results.data_vars) != 0:
+            # set default values
+            self.param.selected_result.objects = self.adh_mod.simulation.results.data_vars
+            try:
+                self.selected_result = 'Depth'
+            except:
+                self.selected_result = set(self.adh_mod.simulation.results.data_vars).pop()
 
-        self.param.selected_times.objects = self.adh_mod.mesh.current_sim.results[self.selected_result].times.data
-        self.selected_times = set(self.adh_mod.mesh.current_sim.results[self.selected_result].times.data).pop()
+            self.param.selected_times.objects = self.adh_mod.mesh.current_sim.results[self.selected_result].times.data
+            self.selected_times = set(self.adh_mod.mesh.current_sim.results[self.selected_result].times.data).pop()
 
         # set default colormap
         self.cmap_opts.colormap = process_cmap('rainbow_r')
