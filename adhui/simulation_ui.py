@@ -4,6 +4,8 @@ import pandas as pd
 import numpy as np
 from adhmodel import BoundaryConditions
 import panel as pn
+import bokeh
+from bokeh.models.widgets.tables import NumberEditor, StringEditor
 
 
 log = logging.getLogger('adh')
@@ -215,6 +217,24 @@ def _create_hotstart(adh_model, fem_obj, hotstart_param):
     return adh_model
 
 
+def dataframe_to_bokeh_table(df):
+    def mk_edit(vals):
+        if vals.dtype is np.dtype(int):
+            return NumberEditor()
+        elif vals.dtype is np.dtype(str):
+            return StringEditor()
+        else:
+            return StringEditor()
+
+    source = bokeh.models.ColumnDataSource(df.to_dict(orient='list'))
+    columns = [bokeh.models.TableColumn(field=name, title=name.replace('_', ' ').title(), editor=mk_edit(vals))
+               for
+               name, vals in df.items()]
+    table = bokeh.models.DataTable(source=source, columns=columns, editable=True)
+
+    return table
+
+
 class BoundaryConditionsUI(param.Parameterized):
     bound_cond = param.ClassSelector(default=BoundaryConditions(), class_=BoundaryConditions)
 
@@ -222,9 +242,11 @@ class BoundaryConditionsUI(param.Parameterized):
     transport_select = param.ObjectSelector(label='Select Constituent')
     time_series_select = param.ObjectSelector(label='Time Series')
 
-    def __init__(self, **params):
+    def __init__(self, bc_options=None, **params):
 
         super(BoundaryConditionsUI, self).__init__(**params)
+        self.bc_options = bc_options
+        # parse bc visualization options #todo
 
         # set the available materials and current selected material number
         self.param.material_select.objects = self.bound_cond.material_properties.keys()
@@ -250,7 +272,7 @@ class BoundaryConditionsUI(param.Parameterized):
             # set the current selected material
             self.selected_time_series = self.bound_cond.time_series[self.time_series_select]
 
-    @param.depends('material_select')
+    @param.depends('material_select', watch=True)
     def _material_properties(self):
         """updated the selected material based on the dropdown menu"""
         self.selected_material = self.bound_cond.material_properties[self.material_select]
@@ -267,32 +289,59 @@ class BoundaryConditionsUI(param.Parameterized):
         else:
             return pn.Spacer(width=0)
 
-    @param.depends('time_series_select')
-    def view_time_series(self):
+    @param.depends('time_series_select', watch=True)
+    def time_series_table(self):
         """update the selected time series based on the dropdown menus"""
         if self.bound_cond.time_series:
             # set the current selected material
             self.selected_time_series = self.bound_cond.time_series[self.time_series_select]
-            return pn.panel(self.selected_time_series, show_name=False)
+            # convert dataframe to a bokeh table
+            table = dataframe_to_bokeh_table(self.selected_time_series.time_series)
+
+            # from holoviews.plotting.links import DataLink
+            # table_link = DataLink(source=self.selected_time_series.time_series, target=table)
+
+            # create base parameter list for time series objects
+            parameter_list = ['series_type', 'units', 'output_units']
+
+            # add xy locations for wind and wave series
+            if self.selected_time_series.series_type == 'SERIES WIND' or \
+                    self.selected_time_series.series_type == 'SERIES WAVE':
+                parameter_list.append('x_location')
+                parameter_list.append('y_location')
+
+            # construct the time options panel
+            time_options = pn.panel(
+                self.selected_time_series.param,
+                parameters=parameter_list
+            )
+            return pn.Row(table, time_options)
+
         else:
             return pn.Spacer(width=0)
 
-    @param.output()
-    def output(self):
-        return
+    def view_time_series(self):
+        time_series_view = pn.Column(
+            self.param.time_series_select,
+            pn.panel(self.time_series_table)
+        )
+        time_series_box = pn.WidgetBox('### Time Series', time_series_view)
+        return time_series_box
 
-    def panel(self):
-        # todo add wind properties
+    def view_materials(self):
         materials_view = pn.Column(
             pn.panel(self.param, parameters=['material_select'], show_name=False),
             pn.Row(
-                pn.Column('### General Properties', self._material_properties()),
-                pn.Column('### Constituent Properties', self.param.transport_select, self._transport_properties()),
-                pn.Column('### Wind Properties', pn.panel(self.selected_material.wind_properties, show_name=False))
+                pn.Column('***General Properties***', self._material_properties),
+                pn.Column('***Constituent Properties***', self.param.transport_select, self._transport_properties),
+                pn.Column('***Wind Properties***', pn.panel(self.selected_material.wind_properties, show_name=False))
             )
         )
-        materials_box = pn.WidgetBox('# Materials', materials_view)
+        materials_box = pn.WidgetBox('### Materials', materials_view)
 
+        return materials_box
+
+    def view_general(self):
         tab_view = pn.Tabs(
             ('Model Constants', self.bound_cond.model_constants.panel()),
             ('Operation Parameters', self.bound_cond.operation_parameters.panel()),
@@ -301,14 +350,32 @@ class BoundaryConditionsUI(param.Parameterized):
             ('Time Control', self.bound_cond.time_control.panel()),
             ('Constituent Properties', self.bound_cond.constituent_properties.panel())
         )
-        general_box = pn.WidgetBox('# General Boundary Conditions', tab_view, width=900)
+        general_box = pn.WidgetBox('### General Boundary Conditions', tab_view, width=900)
+        return general_box
 
-        time_series_view = pn.Column(
-            self.param.time_series_select,
-            pn.panel(self.view_time_series())
+    def view_base(self):
+        tab_view = pn.Tabs(
+            ('Strings', dataframe_to_bokeh_table(self.bound_cond.boundary_strings)),
+            ('Solution', dataframe_to_bokeh_table(self.bound_cond.solution_controls)),
+            ('Stage Discharge', dataframe_to_bokeh_table(self.bound_cond.stage_discharge_boundary)),
+            ('Friction', dataframe_to_bokeh_table(self.bound_cond.friction_controls)),
+            ('Breach', dataframe_to_bokeh_table(self.bound_cond.breach_controls)),
+            ('Flap Gates', dataframe_to_bokeh_table(self.bound_cond.flap_gates)),
+            ('Sluice Gates', dataframe_to_bokeh_table(self.bound_cond.sluice_gates))
         )
-        time_series_box = pn.WidgetBox('# Time Series', time_series_view)
+        return tab_view
 
-        main_panel = pn.Column(general_box, materials_box, time_series_box)
+    @param.output()
+    def output(self):
+        return
+
+    def panel(self):
+
+        main_panel = pn.Tabs(
+            ('Base', self.view_base),
+            ('General', self.view_general),
+            ('Materials', self.view_materials),
+            ('Time Series', self.view_time_series)
+        )
 
         return main_panel
