@@ -21,7 +21,7 @@ from holoviews.core.util import basestring
 from holoviews import dim, opts
 from holoviews.plotting.util import process_cmap
 
-from .simulation_ui import SimulationLocation, DefineHotstart, Attributes, LoadSimulation
+from .simulation_ui import SimulationLocation, DefineHotstart, Attributes, LoadSimulation, BoundaryConditionsUI
 
 from adhmodel.adh_model import AdhModel
 
@@ -318,8 +318,10 @@ class AdhView(param.Parameterized):
         doc="""AdhModel object containing all the model data"""
     )
 
+    # todo view analysis is currently hidden until it recieves more work
     view_analysis = param.Boolean(
-        default=False
+        default=False,
+        precendence=-1,
     )
     resolution = param.Number(
         default=1000,
@@ -329,14 +331,21 @@ class AdhView(param.Parameterized):
             Distance between samples in meters. Used for interpolation
             of the cross-section paths."""
     )
-    wireframe = param.Boolean(default=False, doc='temporary placeholder for mesh elements toggle')
 
-    selected_result = param.ObjectSelector()
+    selected_result = param.ObjectSelector(
+    )
 
     selected_times = param.ObjectSelector()
 
+    bc_ui = param.ClassSelector(
+        class_=BoundaryConditionsUI
+    )
+
     def __init__(self, **params):
         super(AdhView, self).__init__(**params)
+        # initialize the boundary condition ui
+        self.bc_ui = BoundaryConditionsUI(bound_cond=self.adh_mod.simulation.boundary_conditions)
+
         self.meshes = None
 
         if len(self.adh_mod.simulation.results.data_vars) != 0:
@@ -356,12 +365,8 @@ class AdhView(param.Parameterized):
         self.adh_mod.wmts.source = gvts.tile_sources['EsriImagery']
 
     # function for dynamic map call
-    # @param.depends('result_time')
     @param.depends('selected_times')
     def time_mesh_scalar(self):
-        # sim = self.simulations[self.sim_selector]
-        # result = self.adh_mod.mesh.current_sim.results[self.selected_result]
-
         # add this time step's data as a vdim under the provided label
         data_points = self.adh_mod.mesh.mesh_points.add_dimension(
             self.selected_result,
@@ -375,9 +380,6 @@ class AdhView(param.Parameterized):
 
     @param.depends('selected_times')
     def time_mesh_vector(self):
-        # sim = self.mesh.simulations[self.sim_selector]
-        # result = self.current_sim.result_label
-
         vx = self.adh_mod.mesh.current_sim.results[self.selected_result].sel(times=self.selected_times).data[:, 0]
         vy = self.adh_mod.mesh.current_sim.results[self.selected_result].sel(times=self.selected_times).data[:, 1]
         xs = self.adh_mod.mesh.mesh_points.data['x']
@@ -391,8 +393,6 @@ class AdhView(param.Parameterized):
     @param.depends('selected_result')
     def create_animation(self):
         """ Method to create holoviews dynamic map meshes for vector or scalar datasets"""
-        # sim = self.mesh.simulations[self.sim_selector]
-        # result = self.current_sim.result_label
         # check to make sure the mesh points have been set.
         if self.adh_mod.mesh.mesh_points.data.empty:
             self.adh_mod.mesh.reproject_points()
@@ -413,6 +413,7 @@ class AdhView(param.Parameterized):
 
     @property
     def tabs(self):
+        print('tabs')
         # if the annotator has no mesh
         if self.adh_mod.mesh.verts.empty:
             disp_tab = pn.Column(pn.panel(self.adh_mod.wmts.param, parameters=['source'], expand_button=False, show_name=False))
@@ -422,7 +423,7 @@ class AdhView(param.Parameterized):
                 pn.panel(self.adh_mod.wmts.param, parameters=['source'], expand_button=False, show_name=False),
                 pn.panel(self.cmap_opts, show_name=False),
                 pn.panel(self.display_range, show_name=False),
-                pn.panel(self, parameters=['wireframe'], show_name=False),
+                pn.panel(self.adh_mod.mesh.param, parameters=['elements_toggle'], show_name=False),
                 pn.panel(self.param, parameters=['selected_result'], show_name=False),
                 pn.panel(self, parameters=['view_analysis'], show_name=False))
 
@@ -435,15 +436,12 @@ class AdhView(param.Parameterized):
 
     # how to build this page
     def panel(self):
+        print('panel')
         return pn.panel(self.run)
 
-    # @param.depends('input_data.load_data', watch=True)
-    # def _adh_mod(self):
-    #     self.adh_mod = self.input_data._load_data()   # todo remove this!!!!!!! it loads data twice!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    @param.depends('selected_result', 'wireframe', 'view_analysis',
-                   'adh_mod.wmts.source', watch=True)
+    @param.depends('selected_result', 'view_analysis', 'adh_mod.mesh.elements_toggle', watch=True)
     def run(self):
+        print('run')
         self.build_map_pane()
         self.build_tool_pane()
         self.build_analysis_pane()
@@ -455,21 +453,25 @@ class AdhView(param.Parameterized):
             logo_box = pn.panel(logo, width=300)
         else:
             logo_box = pn.Spacer()
+        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs, *self.bc_ui.tabs), logo_box)
+        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs), self.bc_ui.panel, logo_box)
         self.tool_pane = pn.Column(pn.Tabs(*self.tabs), logo_box)
 
-    # @param.depends('annotator.result_label', 'wireframe.mesh_elements')  # never need watch=True
+    # @param.depends('annotator.result_label')
+    # @param.depends('adh_mod.mesh.elements_toggle', watch=True) # todo I don't know why this won't work
     def build_map_pane(self):
         if self.adh_mod.mesh.verts.empty:
-            self.map_pane = self.adh_mod.map_view()
+            self.map_pane = self.adh_mod.map_view
             self.analysis_pane = pn.Spacer()
         else:
             # create the meshes for the dynamic map
             meshes = self.create_animation()
 
-            if self.wireframe is True:
-                edgepaths_overlay = self.adh_mod.mesh.view_elements()  # transparent/ invisible overlay
-            else:
-                edgepaths_overlay = hv.Points(data=[])  # existing edgepaths overlay
+            # if self.wireframe is True:
+            #     edgepaths_overlay = self.adh_mod.mesh.view_elements()  # transparent/ invisible overlay
+            # else:
+            #     edgepaths_overlay = hv.Points(data=[])  # existing edgepaths overlay
+            edgepaths_overlay = self.adh_mod.mesh.view_elements()
 
             # Define dynamic options
             opts = dict(
@@ -485,7 +487,7 @@ class AdhView(param.Parameterized):
                 rasterized = rasterize(meshes).apply.opts(**opts)
                 # Apply the colormap and color range dynamically
                 dynamic = (rasterized *
-                           self.adh_mod.wmts.view() *
+                           hv.DynamicMap(self.adh_mod.wmts.view) *
                            self.adh_mod.polys *
                            self.adh_mod.points *
                            edgepaths_overlay)
@@ -494,7 +496,7 @@ class AdhView(param.Parameterized):
                 paths = vectorfield_to_paths(meshes, color='Magnitude', magnitude='Magnitude', scale=0.005)
                 rasterized = rasterize(paths, aggregator='mean', precompute=True).apply.opts(**opts)
                 dynamic = (rasterized *
-                           self.adh_mod.wmts.view() *
+                           hv.DynamicMap(self.adh_mod.wmts.view) *
                            self.adh_mod.polys *
                            self.adh_mod.points *
                            edgepaths_overlay)
@@ -504,7 +506,7 @@ class AdhView(param.Parameterized):
             # time = pn.panel(self.adh_mod.mesh.current_sim, parameters=['time'],
             #                 widgets={'time': pn.widgets.DiscretePlayer}, show_name=False, width=400)
             time = pn.panel(self.param, parameters=['selected_times'],
-                            widgets={'selected_times': pn.widgets.DiscretePlayer}, show_name=False, width=400)
+                            widgets={'selected_times': pn.widgets.DiscretePlayer}, show_name=False, width=600)
 
             hv_panel = pn.panel(dynamic)
 
