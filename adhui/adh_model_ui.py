@@ -2,7 +2,6 @@ import os, glob, logging
 import xarray as xr
 import param
 import numpy as np
-import geoviews as gv
 import panel as pn
 import cartopy.crs as ccrs
 
@@ -10,12 +9,12 @@ from adhmodel.simulation.dat_reader import get_variable_from_file_name
 from genesis.util import Projection
 from genesis.ui_util.map_display import DisplayRangeOpts, ColormapOpts
 from adhmodel.simulation.utils import get_crs
-from holoviews.streams import Params, PointerX
+from holoviews.streams import PointerX
 
 import geoviews as gv
 from geoviews import tile_sources as gvts
 import holoviews as hv
-from holoviews.operation.datashader import datashade, rasterize
+from holoviews.operation.datashader import rasterize
 from holoviews import Operation
 from holoviews.core.util import basestring
 from holoviews import dim, opts
@@ -24,6 +23,8 @@ from holoviews.plotting.util import process_cmap
 from .simulation_ui import SimulationLocation, DefineHotstart, Attributes, LoadSimulation, BoundaryConditionsUI
 
 from adhmodel.adh_model import AdhModel
+from uit.panel_util import PbsScriptStage
+from uit import Client, PbsScript, PbsJob
 
 log = logging.getLogger('adh')
 
@@ -541,3 +542,85 @@ def results_dashboard():
 
     # return a display of the pipeline
     return pipeline.layout
+
+
+class AdhModelSubmit(PbsScriptStage):
+    """Submit a single AdH model simulation to an ERDC HPC (Onyx/Topaz) using UIT+ for authorization and communication
+    """
+    pbs_job_name = param.String(default='pbs_job_name', precedence=0.1)
+    remote_dir_name = param.String(default='remote_dir', precedence=0.3)
+    uit_client = param.ClassSelector(Client)
+    submit_script_filename = param.String(default='submit.pbs', precedence=-1)
+
+    def __init__(self, **params):
+        super().__init__(**params)
+
+        # override predefined nodes bounds
+        self.param.nodes.bounds = (1, 100)
+
+    def panel(self):
+        pbs_script_options = super().view()
+        input_info = pn.Column(self.param.pbs_job_name, self.param.remote_dir_name, name='Job Options')
+        return pn.Column(
+            pn.panel(pn.layout.Tabs(input_info, pbs_script_options, height=500)),
+        )
+
+    @param.output(job=PbsJob)
+    def submit(self):
+        jobs = list()
+        working_dir = self.workdir + '/' + self.remote_dir_name
+
+        job = self.generate_pbs_job(working_dir)
+        job.submit(working_dir=working_dir, remote_name=self.submit_script_filename)
+
+        return job
+
+    def generate_pbs_job(self, working_dir, job_num=0):
+        """
+        It would be nice to have the bounds for the number of nodes, `HPCSubmitScript.nodes`
+        dynamically change with the `queue`. It would also require the system so it would
+        need to be added at this higher level class.
+        """
+
+        script = PbsScript(
+            name=f'{self.pbs_job_name}_{job_num}',
+            project_id=self.hpc_subproject,
+            num_nodes=self.nodes,
+            queue=self.queue,
+            processes_per_node=44,
+            max_time=self.wall_time,
+            system=self.uit_client.system,
+        )
+        # highly oversimplified
+        ncpus = {
+            'onyx': 44,
+            'topaz': 36
+        }
+
+        total_processors = self.nodes * ncpus[script.system]
+
+        adh_rootname = 'CTR1_PWOP'
+        output_file = f'{adh_rootname}_adh.out'
+
+        if self.uit_client.system == 'onyx':
+            executable_path = '$PROJECTS_HOME/AdH_SW/adh_V4.6'
+            execute_string = f'aprun -n {total_processors} {executable_path} {adh_rootname} |tee {output_file}'
+        elif self.uit_client.system == 'topaz':
+            executable_path = '/p/home/apps/unsupported/AdH_SW/adh_v4.6'
+            execute_string = f'mpiexec_mpt -n {total_processors} {executable_path} {adh_rootname} > {output_file}'
+        else:
+            raise RuntimeError('UIT+ is currently only available on topaz and onyx.')
+
+        script.execution_block = f"""
+cd $PBS_O_WORKDIR
+
+mkdir -p {working_dir}
+cd {working_dir}
+
+{execute_string}
+
+        """
+
+        job = PbsJob(script=script, client=self.uit_client)
+
+        return job
