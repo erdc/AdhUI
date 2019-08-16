@@ -7,7 +7,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'panel>=0.6.0',
-        'pyuit',
+        'pyuit>=0.3.0a6',
         'holoviews',
         'geoviews',
         'xarray',

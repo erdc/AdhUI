@@ -11,7 +11,7 @@ channels:
 dependencies:
     - python=3.6
     - panel>=0.6.0
-    - pyuit
+    - pyuit>=0.3.0a6
     - holoviews
     - geoviews
     - xarray
