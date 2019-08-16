@@ -1,10 +1,10 @@
 name: adhui
 
 channels:
-    - pyviz
     - pyviz/label/dev
-    - erdc
+    - pyviz
     - erdc/label/dev
+    - erdc
     - aquaveo
     - conda-forge
 
