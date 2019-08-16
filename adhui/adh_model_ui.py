@@ -31,6 +31,11 @@ ROOTDIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file
 
 
 class LoadModel(param.Parameterized):
+    """
+    Parameterized class to load model information
+
+    Formatted for Panel and Pipeline Page
+    """
     load_sim_widget = param.ClassSelector(default=LoadSimulation(), class_=LoadSimulation)
     att_widget = param.ClassSelector(default=Attributes(), class_=Attributes)
     projection = param.ClassSelector(default=Projection(), class_=Projection)
@@ -99,12 +104,6 @@ class LoadModel(param.Parameterized):
 
         # otherwise read from available *.dat files
         else:
-            # # read in extension dicts & standardize extensions
-            # ext_to_widget, widget_to_ext = attribute_dict()  #todo replace with suffix_list
-            #
-            # # fix
-            # ext_to_widget['error'] = ext_to_widget.pop('err_hyd')
-
             # get the list of filenames  # todo this isn't foolproof e.g. `SanDieg` finds files
             file_names = glob.glob(os.path.join(self.load_sim_widget.adh_directory,
                                                 self.load_sim_widget.adh_root_filename + '_*.dat'))
@@ -147,9 +146,6 @@ class LoadModel(param.Parameterized):
         # if file is netcdf
         if self.load_sim_widget.load_netcdf:
 
-            # self.model, avail_attributes = load_model(self.load_sim_widget.adh_directory,
-            #                                           project_name=self.load_sim_widget.adh_root_filename,
-            #                                           netcdf=self.load_sim_widget.load_netcdf)
             self.adh_mod.from_netcdf(
                 path=self.load_sim_widget.adh_directory,
                 project_name=self.load_sim_widget.adh_root_filename,
@@ -165,23 +161,12 @@ class LoadModel(param.Parameterized):
             [fnames.append(os.path.join(self.load_sim_widget.adh_directory,
                                         self.load_sim_widget.adh_root_filename + '_' + x + '.dat')) for x in slist]
             # read the requested files
-            # self.model, avail_attributes = load_model(self.load_sim_widget.adh_directory,
-            #                                           project_name=self.load_sim_widget.adh_root_filename,
-            #                                           netcdf=False, crs=self.projection.get_crs(), filenames=fnames)
             self.adh_mod.from_ascii(
                 path=self.load_sim_widget.adh_directory,
                 project_name=self.load_sim_widget.adh_root_filename,
                 crs=self.projection.get_crs(),
                 file_names=fnames
             )
-
-        # adh_mod = AdhModel(path_type=gv.Path)
-        # adh_mod.set_model(self.model)
-        # adh_mod.adh_root_filename = self.load_sim_widget.adh_root_filename
-        # adh_mod.directory = self.load_sim_widget.adh_directory
-        # roams_model = None
-        #
-        # self.adh_mod = adh_mod  # todo temporary solution to button click return AND pipeline passing
 
         return self.adh_mod
 
@@ -318,10 +303,10 @@ class AdhView(param.Parameterized):
         doc="""AdhModel object containing all the model data"""
     )
 
-    # todo view analysis is currently hidden until it recieves more work
+    # todo view analysis is currently hidden until it receives more work
     view_analysis = param.Boolean(
         default=False,
-        precendence=-1,
+        precedence=-1,
     )
     resolution = param.Number(
         default=1000,
@@ -413,7 +398,6 @@ class AdhView(param.Parameterized):
 
     @property
     def tabs(self):
-        print('tabs')
         # if the annotator has no mesh
         if self.adh_mod.mesh.verts.empty:
             disp_tab = pn.Column(pn.panel(self.adh_mod.wmts.param, parameters=['source'], expand_button=False, show_name=False))
@@ -436,12 +420,10 @@ class AdhView(param.Parameterized):
 
     # how to build this page
     def panel(self):
-        print('panel')
         return pn.panel(self.run)
 
     @param.depends('selected_result', 'view_analysis', 'adh_mod.mesh.elements_toggle', watch=True)
     def run(self):
-        print('run')
         self.build_map_pane()
         self.build_tool_pane()
         self.build_analysis_pane()
@@ -454,8 +436,8 @@ class AdhView(param.Parameterized):
         else:
             logo_box = pn.Spacer()
         # self.tool_pane = pn.Column(pn.Tabs(*self.tabs, *self.bc_ui.tabs), logo_box)
-        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs), self.bc_ui.panel, logo_box)
         self.tool_pane = pn.Column(pn.Tabs(*self.tabs), logo_box)
+        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs), self.bc_ui.panel(), logo_box)
 
     # @param.depends('annotator.result_label')
     # @param.depends('adh_mod.mesh.elements_toggle', watch=True) # todo I don't know why this won't work
@@ -467,10 +449,6 @@ class AdhView(param.Parameterized):
             # create the meshes for the dynamic map
             meshes = self.create_animation()
 
-            # if self.wireframe is True:
-            #     edgepaths_overlay = self.adh_mod.mesh.view_elements()  # transparent/ invisible overlay
-            # else:
-            #     edgepaths_overlay = hv.Points(data=[])  # existing edgepaths overlay
             edgepaths_overlay = self.adh_mod.mesh.view_elements()
 
             # Define dynamic options
@@ -531,6 +509,15 @@ class AdhView(param.Parameterized):
         # if self.view_analysis:
         #     self.analysis_pane = pn.Column(self.sections * self.vline)
         pass
+
+
+class AdhViewBasic(AdhView):
+    def __init__(self, **params):
+        super(AdhViewBasic, self).__init__(**params)
+
+    def build_tool_pane(self, logo=None):
+
+        self.tool_pane = pn.Tabs(*self.tabs, ('Time Series', self.bc_ui.view_time_series))
 
 
 def results_dashboard():
