@@ -9,7 +9,6 @@ from bokeh.models.widgets.tables import NumberEditor, StringEditor
 
 
 log = logging.getLogger('adh')
-
 ROOTDIR = os.path.dirname(os.path.dirname(__file__))
 LOGO = os.path.join(ROOTDIR, 'data', 'es_logo.svg')
 
@@ -71,6 +70,14 @@ class Attributes(param.Parameterized):
 
     @property
     def widget_to_suffix(self):
+        """
+        Mapping from widget param objects to the AdH file suffix.
+
+        Returns:
+            Dictionary with mapping {param_name: suffix}
+
+        todo fill out and test AdHv4 dictionary - what is below may not be comprehensive
+        """
         # # Adhv4
         # widget_to_suffix = {
         #     'active_layer_distribution': 'ald',
@@ -144,30 +151,6 @@ class Attributes(param.Parameterized):
         """
         # get the list of bool params
         plist = self.param_list(value=value)
-        # create the mapping from widget labels to suffixes
-        # widget_to_suffix = {
-        #     'active_layer_distribution': 'ald',
-        #     'active_layer_thickness': 'alt',
-        #     'bedload': 'bedload',
-        #     'bed_layer_distribution': 'bld',
-        #     'bed_layer_thickness': 'blt',
-        #     'bed_shear': 'bsh',
-        #     'clay': 'cla',
-        #     'cohesive_bed_properties': 'cbp',
-        #     'generic_constituent': 'con',
-        #     'depth': 'dep',
-        #     'bed_displacement': 'bed_dpl',
-        #     'error_hydro': 'err_hyd',
-        #     'error_constituent': 'err_con',
-        #     'salinity': 'sal',
-        #     'sediment_mass_residual': 'smr',
-        #     'sand': 'snd',
-        #     'suspended_load': 'susload',
-        #     'string_flux': 'tflx',
-        #     'velocity': 'vel',
-        #     'vorticity': 'vor',
-        #     'water_surface_elevation': 'wse'
-        #     }
 
         # convert the params to suffixes
         slist = []
@@ -369,13 +352,27 @@ class BoundaryConditionsUI(param.Parameterized):
     def output(self):
         return
 
-    def panel(self):
-
-        main_panel = pn.Tabs(
+    @property
+    def tabs(self):
+        tab_list = [
             ('Base', self.view_base),
             ('General', self.view_general),
             ('Materials', self.view_materials),
             ('Time Series', self.view_time_series)
+        ]
+        return tab_list
+
+    def panel(self):
+        main_panel = pn.Tabs(
+            *self.tabs
         )
 
         return main_panel
+
+    def panel_basic(self):
+        return self.bound_cond.model_constants.panel()
+
+    def string_to_geoviews(self):
+        df = self.bound_cond.boundary_strings
+
+
