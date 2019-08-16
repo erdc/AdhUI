@@ -2,18 +2,18 @@ from setuptools import setup, find_packages
 
 setup(
     name='adhui',
-    version='0.1.0',
+    version='0.2.0',
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        'panel',
+        'panel>=0.6.0',
         'pyuit',
         'holoviews',
         'geoviews',
         'xarray',
         'param',
         'numpy',
-        'genesis',
+        'genesis>=0.0.5',
         'pandas',
         'geopandas',
         'cartopy',
@@ -22,7 +22,7 @@ setup(
         'pytest',
         'pyflakes',
         'nbsmoke',
-        'adhmodel'
+        'adhmodel>=0.4.0'
     ],
     description="UI Building blocks for Adaptive Hydraulics Model creation and visualization",
     url="https://github.com/erdc/AdhUI",
