@@ -2,7 +2,6 @@ import os, glob, logging
 import xarray as xr
 import param
 import numpy as np
-import geoviews as gv
 import panel as pn
 import cartopy.crs as ccrs
 
@@ -10,20 +9,22 @@ from adhmodel.simulation.dat_reader import get_variable_from_file_name
 from genesis.util import Projection
 from genesis.ui_util.map_display import DisplayRangeOpts, ColormapOpts
 from adhmodel.simulation.utils import get_crs
-from holoviews.streams import Params, PointerX
+from holoviews.streams import PointerX
 
 import geoviews as gv
 from geoviews import tile_sources as gvts
 import holoviews as hv
-from holoviews.operation.datashader import datashade, rasterize
+from holoviews.operation.datashader import rasterize
 from holoviews import Operation
 from holoviews.core.util import basestring
 from holoviews import dim, opts
 from holoviews.plotting.util import process_cmap
 
-from .simulation_ui import SimulationLocation, DefineHotstart, Attributes, LoadSimulation
+from .simulation_ui import SimulationLocation, DefineHotstart, Attributes, LoadSimulation, BoundaryConditionsUI
 
 from adhmodel.adh_model import AdhModel
+from uit.panel_util import PbsScriptStage
+from uit import Client, PbsScript, PbsJob
 
 log = logging.getLogger('adh')
 
@@ -31,6 +32,11 @@ ROOTDIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file
 
 
 class LoadModel(param.Parameterized):
+    """
+    Parameterized class to load model information
+
+    Formatted for Panel and Pipeline Page
+    """
     load_sim_widget = param.ClassSelector(default=LoadSimulation(), class_=LoadSimulation)
     att_widget = param.ClassSelector(default=Attributes(), class_=Attributes)
     projection = param.ClassSelector(default=Projection(), class_=Projection)
@@ -99,12 +105,6 @@ class LoadModel(param.Parameterized):
 
         # otherwise read from available *.dat files
         else:
-            # # read in extension dicts & standardize extensions
-            # ext_to_widget, widget_to_ext = attribute_dict()  #todo replace with suffix_list
-            #
-            # # fix
-            # ext_to_widget['error'] = ext_to_widget.pop('err_hyd')
-
             # get the list of filenames  # todo this isn't foolproof e.g. `SanDieg` finds files
             file_names = glob.glob(os.path.join(self.load_sim_widget.adh_directory,
                                                 self.load_sim_widget.adh_root_filename + '_*.dat'))
@@ -147,9 +147,6 @@ class LoadModel(param.Parameterized):
         # if file is netcdf
         if self.load_sim_widget.load_netcdf:
 
-            # self.model, avail_attributes = load_model(self.load_sim_widget.adh_directory,
-            #                                           project_name=self.load_sim_widget.adh_root_filename,
-            #                                           netcdf=self.load_sim_widget.load_netcdf)
             self.adh_mod.from_netcdf(
                 path=self.load_sim_widget.adh_directory,
                 project_name=self.load_sim_widget.adh_root_filename,
@@ -165,23 +162,12 @@ class LoadModel(param.Parameterized):
             [fnames.append(os.path.join(self.load_sim_widget.adh_directory,
                                         self.load_sim_widget.adh_root_filename + '_' + x + '.dat')) for x in slist]
             # read the requested files
-            # self.model, avail_attributes = load_model(self.load_sim_widget.adh_directory,
-            #                                           project_name=self.load_sim_widget.adh_root_filename,
-            #                                           netcdf=False, crs=self.projection.get_crs(), filenames=fnames)
             self.adh_mod.from_ascii(
                 path=self.load_sim_widget.adh_directory,
                 project_name=self.load_sim_widget.adh_root_filename,
                 crs=self.projection.get_crs(),
                 file_names=fnames
             )
-
-        # adh_mod = AdhModel(path_type=gv.Path)
-        # adh_mod.set_model(self.model)
-        # adh_mod.adh_root_filename = self.load_sim_widget.adh_root_filename
-        # adh_mod.directory = self.load_sim_widget.adh_directory
-        # roams_model = None
-        #
-        # self.adh_mod = adh_mod  # todo temporary solution to button click return AND pipeline passing
 
         return self.adh_mod
 
@@ -318,8 +304,10 @@ class AdhView(param.Parameterized):
         doc="""AdhModel object containing all the model data"""
     )
 
+    # todo view analysis is currently hidden until it receives more work
     view_analysis = param.Boolean(
-        default=False
+        default=False,
+        precedence=-1,
     )
     resolution = param.Number(
         default=1000,
@@ -329,25 +317,33 @@ class AdhView(param.Parameterized):
             Distance between samples in meters. Used for interpolation
             of the cross-section paths."""
     )
-    wireframe = param.Boolean(default=False, doc='temporary placeholder for mesh elements toggle')
 
-    selected_result = param.ObjectSelector()
+    selected_result = param.ObjectSelector(
+    )
 
     selected_times = param.ObjectSelector()
 
+    bc_ui = param.ClassSelector(
+        class_=BoundaryConditionsUI
+    )
+
     def __init__(self, **params):
         super(AdhView, self).__init__(**params)
+        # initialize the boundary condition ui
+        self.bc_ui = BoundaryConditionsUI(bound_cond=self.adh_mod.simulation.boundary_conditions)
+
         self.meshes = None
 
-        # set default values
-        self.param.selected_result.objects = self.adh_mod.simulation.results.data_vars
-        try:
-            self.selected_result = 'Depth'
-        except:
-            self.selected_result = set(self.adh_mod.simulation.results.data_vars).pop()
+        if len(self.adh_mod.simulation.results.data_vars) != 0:
+            # set default values
+            self.param.selected_result.objects = self.adh_mod.simulation.results.data_vars
+            try:
+                self.selected_result = 'Depth'
+            except:
+                self.selected_result = set(self.adh_mod.simulation.results.data_vars).pop()
 
-        self.param.selected_times.objects = self.adh_mod.mesh.current_sim.results[self.selected_result].times.data
-        self.selected_times = set(self.adh_mod.mesh.current_sim.results[self.selected_result].times.data).pop()
+            self.param.selected_times.objects = self.adh_mod.mesh.current_sim.results[self.selected_result].times.data
+            self.selected_times = set(self.adh_mod.mesh.current_sim.results[self.selected_result].times.data).pop()
 
         # set default colormap
         self.cmap_opts.colormap = process_cmap('rainbow_r')
@@ -355,12 +351,8 @@ class AdhView(param.Parameterized):
         self.adh_mod.wmts.source = gvts.tile_sources['EsriImagery']
 
     # function for dynamic map call
-    # @param.depends('result_time')
     @param.depends('selected_times')
     def time_mesh_scalar(self):
-        # sim = self.simulations[self.sim_selector]
-        # result = self.adh_mod.mesh.current_sim.results[self.selected_result]
-
         # add this time step's data as a vdim under the provided label
         data_points = self.adh_mod.mesh.mesh_points.add_dimension(
             self.selected_result,
@@ -374,9 +366,6 @@ class AdhView(param.Parameterized):
 
     @param.depends('selected_times')
     def time_mesh_vector(self):
-        # sim = self.mesh.simulations[self.sim_selector]
-        # result = self.current_sim.result_label
-
         vx = self.adh_mod.mesh.current_sim.results[self.selected_result].sel(times=self.selected_times).data[:, 0]
         vy = self.adh_mod.mesh.current_sim.results[self.selected_result].sel(times=self.selected_times).data[:, 1]
         xs = self.adh_mod.mesh.mesh_points.data['x']
@@ -390,8 +379,6 @@ class AdhView(param.Parameterized):
     @param.depends('selected_result')
     def create_animation(self):
         """ Method to create holoviews dynamic map meshes for vector or scalar datasets"""
-        # sim = self.mesh.simulations[self.sim_selector]
-        # result = self.current_sim.result_label
         # check to make sure the mesh points have been set.
         if self.adh_mod.mesh.mesh_points.data.empty:
             self.adh_mod.mesh.reproject_points()
@@ -421,7 +408,7 @@ class AdhView(param.Parameterized):
                 pn.panel(self.adh_mod.wmts.param, parameters=['source'], expand_button=False, show_name=False),
                 pn.panel(self.cmap_opts, show_name=False),
                 pn.panel(self.display_range, show_name=False),
-                pn.panel(self, parameters=['wireframe'], show_name=False),
+                pn.panel(self.adh_mod.mesh.param, parameters=['elements_toggle'], show_name=False),
                 pn.panel(self.param, parameters=['selected_result'], show_name=False),
                 pn.panel(self, parameters=['view_analysis'], show_name=False))
 
@@ -436,12 +423,7 @@ class AdhView(param.Parameterized):
     def panel(self):
         return pn.panel(self.run)
 
-    # @param.depends('input_data.load_data', watch=True)
-    # def _adh_mod(self):
-    #     self.adh_mod = self.input_data._load_data()   # todo remove this!!!!!!! it loads data twice!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-    @param.depends('selected_result', 'wireframe', 'view_analysis',
-                   'adh_mod.wmts.source', watch=True)
+    @param.depends('selected_result', 'view_analysis', 'adh_mod.mesh.elements_toggle', watch=True)
     def run(self):
         self.build_map_pane()
         self.build_tool_pane()
@@ -454,21 +436,21 @@ class AdhView(param.Parameterized):
             logo_box = pn.panel(logo, width=300)
         else:
             logo_box = pn.Spacer()
+        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs, *self.bc_ui.tabs), logo_box)
         self.tool_pane = pn.Column(pn.Tabs(*self.tabs), logo_box)
+        # self.tool_pane = pn.Column(pn.Tabs(*self.tabs), self.bc_ui.panel(), logo_box)
 
-    # @param.depends('annotator.result_label', 'wireframe.mesh_elements')  # never need watch=True
+    # @param.depends('annotator.result_label')
+    # @param.depends('adh_mod.mesh.elements_toggle', watch=True) # todo I don't know why this won't work
     def build_map_pane(self):
         if self.adh_mod.mesh.verts.empty:
-            self.map_pane = self.adh_mod.map_view()
+            self.map_pane = self.adh_mod.map_view
             self.analysis_pane = pn.Spacer()
         else:
             # create the meshes for the dynamic map
             meshes = self.create_animation()
 
-            if self.wireframe is True:
-                edgepaths_overlay = self.adh_mod.mesh.view_elements()  # transparent/ invisible overlay
-            else:
-                edgepaths_overlay = hv.Points(data=[])  # existing edgepaths overlay
+            edgepaths_overlay = self.adh_mod.mesh.view_elements()
 
             # Define dynamic options
             opts = dict(
@@ -484,7 +466,7 @@ class AdhView(param.Parameterized):
                 rasterized = rasterize(meshes).apply.opts(**opts)
                 # Apply the colormap and color range dynamically
                 dynamic = (rasterized *
-                           self.adh_mod.wmts.view() *
+                           hv.DynamicMap(self.adh_mod.wmts.view) *
                            self.adh_mod.polys *
                            self.adh_mod.points *
                            edgepaths_overlay)
@@ -493,7 +475,7 @@ class AdhView(param.Parameterized):
                 paths = vectorfield_to_paths(meshes, color='Magnitude', magnitude='Magnitude', scale=0.005)
                 rasterized = rasterize(paths, aggregator='mean', precompute=True).apply.opts(**opts)
                 dynamic = (rasterized *
-                           self.adh_mod.wmts.view() *
+                           hv.DynamicMap(self.adh_mod.wmts.view) *
                            self.adh_mod.polys *
                            self.adh_mod.points *
                            edgepaths_overlay)
@@ -503,7 +485,7 @@ class AdhView(param.Parameterized):
             # time = pn.panel(self.adh_mod.mesh.current_sim, parameters=['time'],
             #                 widgets={'time': pn.widgets.DiscretePlayer}, show_name=False, width=400)
             time = pn.panel(self.param, parameters=['selected_times'],
-                            widgets={'selected_times': pn.widgets.DiscretePlayer}, show_name=False, width=400)
+                            widgets={'selected_times': pn.widgets.DiscretePlayer}, show_name=False, width=600)
 
             hv_panel = pn.panel(dynamic)
 
@@ -530,6 +512,15 @@ class AdhView(param.Parameterized):
         pass
 
 
+class AdhViewBasic(AdhView):
+    def __init__(self, **params):
+        super(AdhViewBasic, self).__init__(**params)
+
+    def build_tool_pane(self, logo=None):
+
+        self.tool_pane = pn.Tabs(*self.tabs, ('Time Series', self.bc_ui.view_time_series))
+
+
 def results_dashboard():
     """
     Wrapper for AdH Results Viewer Dashboard
@@ -551,3 +542,85 @@ def results_dashboard():
 
     # return a display of the pipeline
     return pipeline.layout
+
+
+class AdhModelSubmit(PbsScriptStage):
+    """Submit a single AdH model simulation to an ERDC HPC (Onyx/Topaz) using UIT+ for authorization and communication
+    """
+    pbs_job_name = param.String(default='pbs_job_name', precedence=0.1)
+    remote_dir_name = param.String(default='remote_dir', precedence=0.3)
+    uit_client = param.ClassSelector(Client)
+    submit_script_filename = param.String(default='submit.pbs', precedence=-1)
+
+    def __init__(self, **params):
+        super().__init__(**params)
+
+        # override predefined nodes bounds
+        self.param.nodes.bounds = (1, 100)
+
+    def panel(self):
+        pbs_script_options = super().view()
+        input_info = pn.Column(self.param.pbs_job_name, self.param.remote_dir_name, name='Job Options')
+        return pn.Column(
+            pn.panel(pn.layout.Tabs(input_info, pbs_script_options, height=500)),
+        )
+
+    @param.output(job=PbsJob)
+    def submit(self):
+        jobs = list()
+        working_dir = self.workdir + '/' + self.remote_dir_name
+
+        job = self.generate_pbs_job(working_dir)
+        job.submit(working_dir=working_dir, remote_name=self.submit_script_filename)
+
+        return job
+
+    def generate_pbs_job(self, working_dir, job_num=0):
+        """
+        It would be nice to have the bounds for the number of nodes, `HPCSubmitScript.nodes`
+        dynamically change with the `queue`. It would also require the system so it would
+        need to be added at this higher level class.
+        """
+
+        script = PbsScript(
+            name=f'{self.pbs_job_name}_{job_num}',
+            project_id=self.hpc_subproject,
+            num_nodes=self.nodes,
+            queue=self.queue,
+            processes_per_node=44,
+            max_time=self.wall_time,
+            system=self.uit_client.system,
+        )
+        # highly oversimplified
+        ncpus = {
+            'onyx': 44,
+            'topaz': 36
+        }
+
+        total_processors = self.nodes * ncpus[script.system]
+
+        adh_rootname = 'CTR1_PWOP'
+        output_file = f'{adh_rootname}_adh.out'
+
+        if self.uit_client.system == 'onyx':
+            executable_path = '$PROJECTS_HOME/AdH_SW/adh_V4.6'
+            execute_string = f'aprun -n {total_processors} {executable_path} {adh_rootname} |tee {output_file}'
+        elif self.uit_client.system == 'topaz':
+            executable_path = '/p/home/apps/unsupported/AdH_SW/adh_v4.6'
+            execute_string = f'mpiexec_mpt -n {total_processors} {executable_path} {adh_rootname} > {output_file}'
+        else:
+            raise RuntimeError('UIT+ is currently only available on topaz and onyx.')
+
+        script.execution_block = f"""
+cd $PBS_O_WORKDIR
+
+mkdir -p {working_dir}
+cd {working_dir}
+
+{execute_string}
+
+        """
+
+        job = PbsJob(script=script, client=self.uit_client)
+
+        return job

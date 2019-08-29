@@ -1,30 +1,30 @@
 name: adhui
 
 channels:
-    - pyviz
     - pyviz/label/dev
-    - erdc
+    - pyviz
     - erdc/label/dev
+    - erdc
     - aquaveo
     - conda-forge
 
 dependencies:
     - python=3.6
-    - panel
-    - pyuit
+    - panel>=0.6.0
+    - pyuit>=0.3.0a6
     - holoviews
     - geoviews
     - xarray
     - param
     - numpy
-    - genesis
+    - genesis>=0.0.5
     - pandas
     - geopandas
     - cartopy
     - xmsinterp
     - xmsmesh
     - datashader
-    - adhmodel
+    - adhmodel>=0.4.0
     # for testing
     - pytest
     - pyflakes
